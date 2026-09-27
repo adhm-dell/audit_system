@@ -68,7 +68,8 @@ class ExpenseResource extends Resource
                                 'wallet' => 'محفظة إلكترونية',
                                 'fawry' => 'فوري',
                             ])
-                            ->visible(fn(Forms\Get $get) => $get('source') === 'digital'),
+                            ->visible(fn(Forms\Get $get) => $get('source') === 'digital')
+                            ->required(fn(Forms\Get $get) => $get('source') === 'digital'),
 
                         Forms\Components\Select::make('employee_id')
                             ->label('الموظف')
@@ -81,13 +82,20 @@ class ExpenseResource extends Resource
                             ->label('')
                             ->content(function (Forms\Get $get) {
                                 $source = $get('source') ?? 'cash';
+                                $channel = $get('digital_channel');
                                 $amount = floatval($get('amount') ?? 0);
                                 if ($amount <= 0) {
                                     return '';
                                 }
                                 $service = app(SafeBalanceService::class);
-                                $balance = $service->getBalance($source);
+                                $balance = $service->getBalance($source, $channel);
+                                
                                 $sourceLabel = $source === 'cash' ? 'الكاش' : 'الشبكة';
+                                if ($source === 'digital' && $channel) {
+                                    $channelNames = ['instapay' => 'إنستاباي', 'wallet' => 'محفظة', 'fawry' => 'فوري'];
+                                    $sourceLabel .= ' (' . ($channelNames[$channel] ?? $channel) . ')';
+                                }
+
                                 if ($balance < $amount) {
                                     return "⚠️ تنبيه: رصيد {$sourceLabel} الحالي " . number_format($balance, 2) . " ج.م — المبلغ المطلوب يتجاوز الرصيد!";
                                 }
@@ -160,7 +168,12 @@ class ExpenseResource extends Resource
                 Tables\Columns\TextColumn::make('source')
                     ->label('المصدر')
                     ->badge()
-                    ->formatStateUsing(fn(string $state) => $state === 'cash' ? 'نقدي' : 'شبكة')
+                    ->formatStateUsing(function (string $state, $record) {
+                        if ($state === 'cash') return 'نقدي';
+                        $channelNames = ['instapay' => 'إنستاباي', 'wallet' => 'محفظة', 'fawry' => 'فوري'];
+                        $channel = $record->digital_channel;
+                        return 'شبكة' . ($channel ? ' (' . ($channelNames[$channel] ?? $channel) . ')' : '');
+                    })
                     ->color(fn(string $state) => $state === 'cash' ? 'warning' : 'info'),
 
                 Tables\Columns\TextColumn::make('paid_to')

@@ -84,7 +84,8 @@ class DebtPaymentResource extends Resource
                                 'wallet' => 'محفظة إلكترونية',
                                 'fawry' => 'فوري',
                             ])
-                            ->visible(fn(Forms\Get $get) => $get('source') === 'digital'),
+                            ->visible(fn(Forms\Get $get) => $get('source') === 'digital')
+                            ->required(fn(Forms\Get $get) => $get('source') === 'digital'),
 
                         Forms\Components\DatePicker::make('payment_date')
                             ->label('تاريخ الدفع')
@@ -129,7 +130,12 @@ class DebtPaymentResource extends Resource
                 Tables\Columns\TextColumn::make('source')
                     ->label('المصدر')
                     ->badge()
-                    ->formatStateUsing(fn(string $state) => $state === 'cash' ? 'نقدي' : 'شبكة')
+                    ->formatStateUsing(function (string $state, $record) {
+                        if ($state === 'cash') return 'نقدي';
+                        $channelNames = ['instapay' => 'إنستاباي', 'wallet' => 'محفظة', 'fawry' => 'فوري'];
+                        $channel = $record->digital_channel;
+                        return 'شبكة' . ($channel ? ' (' . ($channelNames[$channel] ?? $channel) . ')' : '');
+                    })
                     ->color(fn(string $state) => $state === 'cash' ? 'warning' : 'info'),
 
                 Tables\Columns\TextColumn::make('installment.installment_number')

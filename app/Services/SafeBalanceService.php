@@ -7,6 +7,7 @@ use App\Models\DailyEnvelope;
 use App\Models\BarEnvelope;
 use App\Models\DebtPayment;
 use App\Models\OwnerWithdrawal;
+use App\Models\OwnerDeposit;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -20,6 +21,8 @@ class SafeBalanceService
         $deposits = DailyEnvelope::sum('net_cash_to_safe');
         $barDeposits = BarEnvelope::sum('cash_total');
 
+        $ownerDeposits = OwnerDeposit::sum('cash_amount');
+
         $withdrawals = OwnerWithdrawal::where('source', 'cash')->sum('amount');
 
         $expenses = Expense::where('source', 'cash')->sum('amount');
@@ -32,30 +35,54 @@ class SafeBalanceService
             ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
             ->sum('amount');
 
-        return $deposits + $barDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
+        return $deposits + $barDeposits + $ownerDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
     }
 
     /**
-     * Get current digital/network balance.
+     * Get digital balance for a specific channel.
      */
-    public function getDigitalBalance(): float
+    public function getDigitalChannelBalance(string $channel): float
     {
-        $deposits = DailyEnvelope::sum('net_digital');
-        $barDeposits = BarEnvelope::sum('network_total');
+        $deposits = DailyEnvelope::sum("network_{$channel}_total");
+        $barDeposits = BarEnvelope::sum("network_{$channel}_total");
 
-        $withdrawals = OwnerWithdrawal::where('source', 'digital')->sum('amount');
+        $ownerDeposits = OwnerDeposit::sum("{$channel}_amount");
 
-        $expenses = Expense::where('source', 'digital')->sum('amount');
+        $envelopeExpenses = DailyEnvelope::where('expenses_paid_from', 'digital')
+            ->where('digital_channel', $channel)
+            ->sum('expenses_total');
+
+        $withdrawals = OwnerWithdrawal::where('source', 'digital')
+            ->where('digital_channel', $channel)
+            ->sum('amount');
+
+        $expenses = Expense::where('source', 'digital')
+            ->where('digital_channel', $channel)
+            ->sum('amount');
 
         $debtPaymentsOut = DebtPayment::where('source', 'digital')
+            ->where('digital_channel', $channel)
             ->whereHas('debt', fn($q) => $q->where('direction', 'payable'))
             ->sum('amount');
 
         $debtPaymentsIn = DebtPayment::where('source', 'digital')
+            ->where('digital_channel', $channel)
             ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
             ->sum('amount');
 
-        return $deposits + $barDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
+        return $deposits + $barDeposits + $ownerDeposits - $envelopeExpenses - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
+    }
+
+    public function getInstapayBalance(): float { return $this->getDigitalChannelBalance('instapay'); }
+    public function getWalletBalance(): float { return $this->getDigitalChannelBalance('wallet'); }
+    public function getFawryBalance(): float { return $this->getDigitalChannelBalance('fawry'); }
+
+    /**
+     * Get current total digital/network balance.
+     */
+    public function getDigitalBalance(): float
+    {
+        return $this->getInstapayBalance() + $this->getWalletBalance() + $this->getFawryBalance();
     }
 
     /**
@@ -79,6 +106,13 @@ class SafeBalanceService
         $deposits = DailyEnvelope::where('envelope_date', '<=', $date)->sum($column);
         $barDeposits = BarEnvelope::where('bar_date', '<=', $date)->sum($source === 'cash' ? 'cash_total' : 'network_total');
 
+        if ($source === 'cash') {
+            $ownerDeposits = OwnerDeposit::where('deposit_date', '<=', $date)->sum('cash_amount');
+        } else {
+            $ownerDeposits = OwnerDeposit::where('deposit_date', '<=', $date)
+                ->sum(DB::raw('instapay_amount + wallet_amount + fawry_amount'));
+        }
+
         $withdrawals = OwnerWithdrawal::where('source', $source)
             ->where('withdrawal_date', '<=', $date)
             ->sum('amount');
@@ -97,28 +131,31 @@ class SafeBalanceService
             ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
             ->sum('amount');
 
-        return $deposits + $barDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
+        return $deposits + $barDeposits + $ownerDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
     }
 
     /**
      * Check if a withdrawal/expense amount would push the balance negative.
      */
-    public function wouldGoNegative(string $source, float $amount): bool
+    public function wouldGoNegative(string $source, float $amount, ?string $channel = null): bool
     {
-        $currentBalance = $source === 'cash'
-            ? $this->getCashBalance()
-            : $this->getDigitalBalance();
-
+        $currentBalance = $this->getBalance($source, $channel);
         return ($currentBalance - $amount) < 0;
     }
 
     /**
-     * Get the current balance for a specific source.
+     * Get the current balance for a specific source and optional channel.
      */
-    public function getBalance(string $source): float
+    public function getBalance(string $source, ?string $channel = null): float
     {
-        return $source === 'cash'
-            ? $this->getCashBalance()
-            : $this->getDigitalBalance();
+        if ($source === 'cash') {
+            return $this->getCashBalance();
+        }
+
+        if ($channel) {
+            return $this->getDigitalChannelBalance($channel);
+        }
+
+        return $this->getDigitalBalance();
     }
 }

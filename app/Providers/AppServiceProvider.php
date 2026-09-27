@@ -8,12 +8,14 @@ use App\Models\DailyEnvelopeItem;
 use App\Models\BarEnvelope;
 use App\Models\DebtPayment;
 use App\Models\OwnerWithdrawal;
+use App\Models\OwnerDeposit;
 use App\Observers\ExpenseObserver;
 use App\Observers\DailyEnvelopeObserver;
 use App\Observers\DailyEnvelopeItemObserver;
 use App\Observers\BarEnvelopeObserver;
 use App\Observers\DebtPaymentObserver;
 use App\Observers\OwnerWithdrawalObserver;
+use App\Observers\OwnerDepositObserver;
 use App\Services\DebtService;
 use App\Services\NotificationService;
 use App\Services\SafeBalanceService;
@@ -41,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         DailyEnvelopeItem::observe(DailyEnvelopeItemObserver::class);
         BarEnvelope::observe(BarEnvelopeObserver::class);
         OwnerWithdrawal::observe(OwnerWithdrawalObserver::class);
+        OwnerDeposit::observe(OwnerDepositObserver::class);
         Expense::observe(ExpenseObserver::class);
         DebtPayment::observe(DebtPaymentObserver::class);
 
