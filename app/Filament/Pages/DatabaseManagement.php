@@ -17,6 +17,27 @@ class DatabaseManagement extends Page
 
     protected static string $view = 'filament.pages.database-management';
 
+    protected function getViewData(): array
+    {
+        $backups = collect(Storage::disk('local')->files('backups'))
+            ->filter(fn($file) => str_ends_with($file, '.sqlite'))
+            ->map(function($file) {
+                return [
+                    'name' => basename($file),
+                    'path' => $file,
+                    'size' => number_format(Storage::disk('local')->size($file) / 1024, 2) . ' KB',
+                    'date' => date('Y-m-d H:i:s', Storage::disk('local')->lastModified($file))
+                ];
+            })
+            ->sortByDesc('date')
+            ->values()
+            ->toArray();
+
+        return [
+            'backups' => $backups
+        ];
+    }
+
     protected function getHeaderActions(): array
     {
         return [
@@ -116,5 +137,18 @@ class DatabaseManagement extends Page
                     }
                 })
         ];
+    }
+
+    public function downloadAutoBackup($path)
+    {
+        if (Storage::disk('local')->exists($path)) {
+            return response()->download(Storage::disk('local')->path($path));
+        }
+
+        Notification::make()
+            ->title('خطأ')
+            ->body('ملف النسخة الاحتياطية غير موجود.')
+            ->danger()
+            ->send();
     }
 }

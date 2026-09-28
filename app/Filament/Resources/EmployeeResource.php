@@ -26,6 +26,20 @@ class EmployeeResource extends Resource
     {
         return $form
             ->schema([
+                Forms\Components\Section::make('ملخص الراتب')
+                    ->schema([
+                        Forms\Components\Placeholder::make('net_salary')
+                            ->label('صافي الراتب المستحق (للشهر الحالي)')
+                            ->content(function (?Employee $record) {
+                                if (! $record) {
+                                    return '-';
+                                }
+                                $net = $record->getNetSalaryForMonth(now()->month, now()->year);
+                                return number_format($net, 2) . ' ج.م';
+                            }),
+                    ])
+                    ->visible(fn (?Employee $record) => $record !== null),
+
                 Forms\Components\Section::make('بيانات الموظف')
                     ->columns(2)
                     ->schema([
@@ -122,6 +136,8 @@ class EmployeeResource extends Resource
     {
         return [
             ExpensesRelationManager::class,
+            \App\Filament\Resources\EmployeeResource\RelationManagers\DailyEnvelopeItemsRelationManager::class,
+            \App\Filament\Resources\EmployeeResource\RelationManagers\TransactionsRelationManager::class,
         ];
     }
 

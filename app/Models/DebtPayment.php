@@ -12,9 +12,10 @@ class DebtPayment extends Model
         'debt_id',
         'installment_id',
         'payment_date',
-        'amount',
-        'source',
-        'digital_channel',
+        'cash_amount',
+        'instapay_amount',
+        'wallet_amount',
+        'fawry_amount',
         'notes',
     ];
 
@@ -22,8 +23,16 @@ class DebtPayment extends Model
     {
         return [
             'payment_date' => 'date',
-            'amount' => 'decimal:2',
+            'cash_amount' => 'decimal:2',
+            'instapay_amount' => 'decimal:2',
+            'wallet_amount' => 'decimal:2',
+            'fawry_amount' => 'decimal:2',
         ];
+    }
+
+    public function getTotalAmountAttribute(): float
+    {
+        return ($this->cash_amount ?? 0) + ($this->instapay_amount ?? 0) + ($this->wallet_amount ?? 0) + ($this->fawry_amount ?? 0);
     }
 
     // ── Relations ──

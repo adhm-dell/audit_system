@@ -43,33 +43,177 @@ class ExpenseResource extends Resource
                             ->searchable()
                             ->live(),
 
-                        Forms\Components\TextInput::make('amount')
-                            ->label('المبلغ')
-                            ->required()
-                            ->numeric()
-                            ->minValue(0.01)
-                            ->prefix('ج.م')
-                            ->live(onBlur: true),
+                        Forms\Components\Toggle::make('is_split')
+                            ->label('تقسيم المبلغ (Split Payment)')
+                            ->live()
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function (Forms\Components\Toggle $component, ?Expense $record) {
+                                if (!$record) return;
+                                $count = 0;
+                                if ($record->cash_amount > 0) $count++;
+                                if ($record->instapay_amount > 0) $count++;
+                                if ($record->wallet_amount > 0) $count++;
+                                if ($record->fawry_amount > 0) $count++;
+                                $component->state($count > 1);
+                            })
+                            ->columnSpanFull(),
 
-                        Forms\Components\Select::make('source')
+                        Forms\Components\TextInput::make('single_amount')
+                            ->label('المبلغ')
+                            ->numeric()
+                            ->prefix('ج.م')
+                            ->visible(fn(Forms\Get $get) => !$get('is_split'))
+                            ->required(fn(Forms\Get $get) => !$get('is_split'))
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function ($component, ?Expense $record) {
+                                if (!$record) return;
+                                $component->state($record->total_amount);
+                            })
+                            ->rule(function (Forms\Get $get, ?Expense $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    if ($get('is_split')) return;
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $source = $get('single_source');
+                                    $service = app(SafeBalanceService::class);
+                                    
+                                    if ($source === 'cash') $balance = $service->getBalance('cash');
+                                    elseif (in_array($source, ['instapay', 'wallet', 'fawry'])) $balance = $service->getBalance('digital', $source);
+                                    else return;
+
+                                    if ($record) {
+                                        if ($source === 'cash') $balance += floatval($record->cash_amount);
+                                        elseif ($source === 'instapay') $balance += floatval($record->instapay_amount);
+                                        elseif ($source === 'wallet') $balance += floatval($record->wallet_amount);
+                                        elseif ($source === 'fawry') $balance += floatval($record->fawry_amount);
+                                    }
+
+                                    if ($amount > $balance) {
+                                        $fail('الرصيد غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\Select::make('single_source')
                             ->label('المصدر')
                             ->options([
                                 'cash' => 'نقدي',
-                                'digital' => 'شبكة/رقمي',
-                            ])
-                            ->required()
-                            ->default('cash')
-                            ->live(),
-
-                        Forms\Components\Select::make('digital_channel')
-                            ->label('قناة الدفع الرقمي')
-                            ->options([
                                 'instapay' => 'إنستاباي',
-                                'wallet' => 'محفظة إلكترونية',
+                                'wallet' => 'محفظة',
                                 'fawry' => 'فوري',
                             ])
-                            ->visible(fn(Forms\Get $get) => $get('source') === 'digital')
-                            ->required(fn(Forms\Get $get) => $get('source') === 'digital'),
+                            ->default('cash')
+                            ->visible(fn(Forms\Get $get) => !$get('is_split'))
+                            ->required(fn(Forms\Get $get) => !$get('is_split'))
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function ($component, ?Expense $record) {
+                                if (!$record) return;
+                                if ($record->instapay_amount > 0) $component->state('instapay');
+                                elseif ($record->wallet_amount > 0) $component->state('wallet');
+                                elseif ($record->fawry_amount > 0) $component->state('fawry');
+                                else $component->state('cash');
+                            }),
+
+                        Forms\Components\TextInput::make('cash_amount')
+                            ->label('المبلغ النقدي')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?Expense $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $service = app(SafeBalanceService::class);
+                                    $balance = $service->getBalance('cash');
+                                    
+                                    if ($record) {
+                                        $balance += floatval($record->cash_amount);
+                                    }
+
+                                    if ($amount > $balance) {
+                                        $fail('الرصيد النقدي غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\TextInput::make('instapay_amount')
+                            ->label('مبلغ إنستاباي')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?Expense $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $service = app(SafeBalanceService::class);
+                                    $balance = $service->getBalance('digital', 'instapay');
+                                    
+                                    if ($record) {
+                                        $balance += floatval($record->instapay_amount);
+                                    }
+
+                                    if ($amount > $balance) {
+                                        $fail('رصيد إنستاباي غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\TextInput::make('wallet_amount')
+                            ->label('مبلغ المحفظة الإلكترونية')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?Expense $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $service = app(SafeBalanceService::class);
+                                    $balance = $service->getBalance('digital', 'wallet');
+                                    
+                                    if ($record) {
+                                        $balance += floatval($record->wallet_amount);
+                                    }
+
+                                    if ($amount > $balance) {
+                                        $fail('رصيد المحفظة غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\TextInput::make('fawry_amount')
+                            ->label('مبلغ فوري')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?Expense $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $service = app(SafeBalanceService::class);
+                                    $balance = $service->getBalance('digital', 'fawry');
+                                    
+                                    if ($record) {
+                                        $balance += floatval($record->fawry_amount);
+                                    }
+
+                                    if ($amount > $balance) {
+                                        $fail('رصيد فوري غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                    }
+                                };
+                            }),
 
                         Forms\Components\Select::make('employee_id')
                             ->label('الموظف')
@@ -77,31 +221,6 @@ class ExpenseResource extends Resource
                             ->searchable()
                             ->required(fn(Forms\Get $get) => in_array($get('category'), ['employee_advance', 'salary']))
                             ->visible(fn(Forms\Get $get) => in_array($get('category'), ['employee_advance', 'salary'])),
-
-                        Forms\Components\Placeholder::make('balance_warning')
-                            ->label('')
-                            ->content(function (Forms\Get $get) {
-                                $source = $get('source') ?? 'cash';
-                                $channel = $get('digital_channel');
-                                $amount = floatval($get('amount') ?? 0);
-                                if ($amount <= 0) {
-                                    return '';
-                                }
-                                $service = app(SafeBalanceService::class);
-                                $balance = $service->getBalance($source, $channel);
-                                
-                                $sourceLabel = $source === 'cash' ? 'الكاش' : 'الشبكة';
-                                if ($source === 'digital' && $channel) {
-                                    $channelNames = ['instapay' => 'إنستاباي', 'wallet' => 'محفظة', 'fawry' => 'فوري'];
-                                    $sourceLabel .= ' (' . ($channelNames[$channel] ?? $channel) . ')';
-                                }
-
-                                if ($balance < $amount) {
-                                    return "⚠️ تنبيه: رصيد {$sourceLabel} الحالي " . number_format($balance, 2) . " ج.م — المبلغ المطلوب يتجاوز الرصيد!";
-                                }
-                                return "✅ رصيد {$sourceLabel} الحالي: " . number_format($balance, 2) . " ج.م";
-                            })
-                            ->columnSpanFull(),
 
                         Forms\Components\DatePicker::make('expense_date')
                             ->label('تاريخ المصروف')
@@ -159,22 +278,32 @@ class ExpenseResource extends Resource
                         default => 'gray',
                     }),
 
-                Tables\Columns\TextColumn::make('amount')
-                    ->label('المبلغ')
+                Tables\Columns\TextColumn::make('total_amount')
+                    ->label('الإجمالي')
                     ->money('EGP')
-                    ->sortable()
-                    ->summarize(Tables\Columns\Summarizers\Sum::make()->money('EGP')->label('الإجمالي')),
-
-                Tables\Columns\TextColumn::make('source')
-                    ->label('المصدر')
+                    ->sortable(['cash_amount', 'instapay_amount', 'wallet_amount', 'fawry_amount'])
                     ->badge()
-                    ->formatStateUsing(function (string $state, $record) {
-                        if ($state === 'cash') return 'نقدي';
-                        $channelNames = ['instapay' => 'إنستاباي', 'wallet' => 'محفظة', 'fawry' => 'فوري'];
-                        $channel = $record->digital_channel;
-                        return 'شبكة' . ($channel ? ' (' . ($channelNames[$channel] ?? $channel) . ')' : '');
-                    })
-                    ->color(fn(string $state) => $state === 'cash' ? 'warning' : 'info'),
+                    ->color('danger'),
+
+                Tables\Columns\TextColumn::make('cash_amount')
+                    ->label('نقدي')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('instapay_amount')
+                    ->label('إنستاباي')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('wallet_amount')
+                    ->label('محفظة')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('fawry_amount')
+                    ->label('فوري')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('paid_to')
                     ->label('مدفوع لـ')
@@ -185,12 +314,7 @@ class ExpenseResource extends Resource
                     ->label('التصنيف')
                     ->options(Expense::categoryLabels()),
 
-                Tables\Filters\SelectFilter::make('source')
-                    ->label('المصدر')
-                    ->options([
-                        'cash' => 'نقدي',
-                        'digital' => 'شبكة',
-                    ]),
+
 
                 Tables\Filters\Filter::make('date_range')
                     ->form([

@@ -13,9 +13,10 @@ class Expense extends Model
         'expense_date',
         'title',
         'category',
-        'amount',
-        'source',
-        'digital_channel',
+        'cash_amount',
+        'instapay_amount',
+        'wallet_amount',
+        'fawry_amount',
         'employee_id',
         'paid_to',
         'attachment_path',
@@ -26,8 +27,16 @@ class Expense extends Model
     {
         return [
             'expense_date' => 'date',
-            'amount' => 'decimal:2',
+            'cash_amount' => 'decimal:2',
+            'instapay_amount' => 'decimal:2',
+            'wallet_amount' => 'decimal:2',
+            'fawry_amount' => 'decimal:2',
         ];
+    }
+
+    public function getTotalAmountAttribute(): float
+    {
+        return ($this->cash_amount ?? 0) + ($this->instapay_amount ?? 0) + ($this->wallet_amount ?? 0) + ($this->fawry_amount ?? 0);
     }
 
     // ── Labels (Arabic) ──

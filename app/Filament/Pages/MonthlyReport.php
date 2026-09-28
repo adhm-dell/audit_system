@@ -132,11 +132,23 @@ class MonthlyReport extends Page implements HasForms
         $totalWithdrawals = array_sum(array_column($withdrawalsByOwner, 'total'));
 
         // Expenses by category
-        $expensesByCategory = Expense::whereBetween('expense_date', [$start, $end])
-            ->get()
-            ->groupBy('category')
+        $expenses = Expense::whereBetween('expense_date', [$start, $end])->get();
+        
+        $envelopeItems = \App\Models\DailyEnvelopeItem::whereHas('dailyEnvelope', function ($q) use ($start, $end) {
+            $q->whereBetween('envelope_date', [$start, $end]);
+        })->get();
+
+        $allExpenses = collect();
+        foreach ($expenses as $e) {
+            $allExpenses->push(['category' => $e->category, 'amount' => $e->amount]);
+        }
+        foreach ($envelopeItems as $item) {
+            $allExpenses->push(['category' => $item->category, 'amount' => $item->amount]);
+        }
+
+        $expensesByCategory = $allExpenses->groupBy('category')
             ->map(fn($items, $cat) => [
-                'label' => Expense::categoryLabels()[$cat] ?? $cat,
+                'label' => Expense::categoryLabels()[$cat] ?? (\App\Models\DailyEnvelopeItem::categoryLabels()[$cat] ?? $cat),
                 'total' => $items->sum('amount'),
             ])
             ->values()

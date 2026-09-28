@@ -14,34 +14,66 @@ class DebtPaymentObserver
         protected DebtService $debtService,
     ) {}
 
-    public function created(DebtPayment $payment): void
+    public function saved(DebtPayment $payment): void
     {
-        $debt = $payment->debt;
+        SafeTransaction::where('reference_type', DebtPayment::class)
+            ->where('reference_id', $payment->id)
+            ->delete();
 
-        // Determine direction: payable = money going out, receivable = money coming in
+        $debt = $payment->debt;
         $direction = $debt->direction === 'payable' ? 'out' : 'in';
 
-        // Create safe transaction
         $snapshot = $this->balanceService->getBalanceSnapshot();
 
+        if ($payment->cash_amount > 0) {
+            $this->createTransaction($payment, 'cash', null, $payment->cash_amount, $direction, $snapshot);
+        }
+
+        if ($payment->instapay_amount > 0) {
+            $this->createTransaction($payment, 'digital', 'instapay', $payment->instapay_amount, $direction, $snapshot);
+        }
+
+        if ($payment->wallet_amount > 0) {
+            $this->createTransaction($payment, 'digital', 'wallet', $payment->wallet_amount, $direction, $snapshot);
+        }
+
+        if ($payment->fawry_amount > 0) {
+            $this->createTransaction($payment, 'digital', 'fawry', $payment->fawry_amount, $direction, $snapshot);
+        }
+
+        if ($payment->installment_id) {
+            $this->debtService->updateInstallmentAfterPayment($payment->installment);
+        }
+
+        $this->debtService->recalculateDebtStatus($debt);
+    }
+
+    protected function createTransaction(DebtPayment $payment, string $source, ?string $channel, float $amount, string $direction, array $snapshot): void
+    {
         SafeTransaction::create([
             'transaction_date' => $payment->payment_date,
-            'type' => 'debt_payment',
-            'source' => $payment->source,
+            'amount' => $amount,
             'direction' => $direction,
-            'amount' => $payment->amount,
+            'type' => 'debt_payment',
+            'source' => $source,
+            'digital_channel' => $channel,
             'reference_type' => DebtPayment::class,
             'reference_id' => $payment->id,
             'balance_after_cash' => $snapshot['cash'],
             'balance_after_digital' => $snapshot['digital'],
         ]);
+    }
 
-        // Update installment if linked
+    public function deleted(DebtPayment $payment): void
+    {
+        SafeTransaction::where('reference_type', DebtPayment::class)
+            ->where('reference_id', $payment->id)
+            ->delete();
+
         if ($payment->installment_id) {
             $this->debtService->updateInstallmentAfterPayment($payment->installment);
         }
 
-        // Recalculate debt status
-        $this->debtService->recalculateDebtStatus($debt);
+        $this->debtService->recalculateDebtStatus($payment->debt);
     }
 }

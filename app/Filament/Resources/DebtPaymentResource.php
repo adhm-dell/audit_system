@@ -60,32 +60,189 @@ class DebtPaymentResource extends Resource
                             ->searchable()
                             ->preload(),
 
-                        Forms\Components\TextInput::make('amount')
-                            ->label('المبلغ')
-                            ->required()
-                            ->numeric()
-                            ->minValue(0.01)
-                            ->prefix('ج.م'),
+                        Forms\Components\Toggle::make('is_split')
+                            ->label('تقسيم المبلغ (Split Payment)')
+                            ->live()
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function (Forms\Components\Toggle $component, ?DebtPayment $record) {
+                                if (!$record) return;
+                                $count = 0;
+                                if ($record->cash_amount > 0) $count++;
+                                if ($record->instapay_amount > 0) $count++;
+                                if ($record->wallet_amount > 0) $count++;
+                                if ($record->fawry_amount > 0) $count++;
+                                $component->state($count > 1);
+                            })
+                            ->columnSpanFull(),
 
-                        Forms\Components\Select::make('source')
+                        Forms\Components\TextInput::make('single_amount')
+                            ->label('المبلغ')
+                            ->numeric()
+                            ->prefix('ج.م')
+                            ->visible(fn(Forms\Get $get) => !$get('is_split'))
+                            ->required(fn(Forms\Get $get) => !$get('is_split'))
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function ($component, ?DebtPayment $record) {
+                                if (!$record) return;
+                                $component->state($record->total_amount);
+                            })
+                            ->rule(function (Forms\Get $get, ?DebtPayment $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    if ($get('is_split')) return;
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $debt_id = $get('debt_id');
+                                    if ($debt_id) {
+                                        $debt = \App\Models\Debt::find($debt_id);
+                                        if ($debt && $debt->direction === 'receivable') {
+                                            return; // Incoming payment, no balance check
+                                        }
+                                    }
+                                    
+                                    $source = $get('single_source');
+                                    $service = app(\App\Services\SafeBalanceService::class);
+                                    
+                                    if ($source === 'cash') $balance = $service->getBalance('cash');
+                                    elseif (in_array($source, ['instapay', 'wallet', 'fawry'])) $balance = $service->getBalance('digital', $source);
+                                    else return;
+
+                                    if ($record) {
+                                        if ($source === 'cash') $balance += floatval($record->cash_amount);
+                                        elseif ($source === 'instapay') $balance += floatval($record->instapay_amount);
+                                        elseif ($source === 'wallet') $balance += floatval($record->wallet_amount);
+                                        elseif ($source === 'fawry') $balance += floatval($record->fawry_amount);
+                                    }
+
+                                    if ($amount > $balance) {
+                                        $fail('الرصيد غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\Select::make('single_source')
                             ->label('المصدر')
                             ->options([
                                 'cash' => 'نقدي',
-                                'digital' => 'شبكة/رقمي',
-                            ])
-                            ->required()
-                            ->default('cash')
-                            ->live(),
-
-                        Forms\Components\Select::make('digital_channel')
-                            ->label('قناة الدفع الرقمي')
-                            ->options([
                                 'instapay' => 'إنستاباي',
-                                'wallet' => 'محفظة إلكترونية',
+                                'wallet' => 'محفظة',
                                 'fawry' => 'فوري',
                             ])
-                            ->visible(fn(Forms\Get $get) => $get('source') === 'digital')
-                            ->required(fn(Forms\Get $get) => $get('source') === 'digital'),
+                            ->default('cash')
+                            ->visible(fn(Forms\Get $get) => !$get('is_split'))
+                            ->required(fn(Forms\Get $get) => !$get('is_split'))
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function ($component, ?DebtPayment $record) {
+                                if (!$record) return;
+                                if ($record->instapay_amount > 0) $component->state('instapay');
+                                elseif ($record->wallet_amount > 0) $component->state('wallet');
+                                elseif ($record->fawry_amount > 0) $component->state('fawry');
+                                else $component->state('cash');
+                            }),
+
+                        Forms\Components\TextInput::make('cash_amount')
+                            ->label('المبلغ النقدي')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?DebtPayment $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $debtId = $get('debt_id');
+                                    if (!$debtId) return;
+                                    $debt = \App\Models\Debt::find($debtId);
+                                    if ($debt && $debt->direction === 'payable') {
+                                        $service = app(\App\Services\SafeBalanceService::class);
+                                        $balance = $service->getBalance('cash');
+                                        if ($record) $balance += floatval($record->cash_amount);
+                                        if ($amount > $balance) {
+                                            $fail('الرصيد النقدي غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                        }
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\TextInput::make('instapay_amount')
+                            ->label('مبلغ إنستاباي')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?DebtPayment $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $debtId = $get('debt_id');
+                                    if (!$debtId) return;
+                                    $debt = \App\Models\Debt::find($debtId);
+                                    if ($debt && $debt->direction === 'payable') {
+                                        $service = app(\App\Services\SafeBalanceService::class);
+                                        $balance = $service->getBalance('digital', 'instapay');
+                                        if ($record) $balance += floatval($record->instapay_amount);
+                                        if ($amount > $balance) {
+                                            $fail('رصيد إنستاباي غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                        }
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\TextInput::make('wallet_amount')
+                            ->label('مبلغ المحفظة الإلكترونية')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?DebtPayment $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $debtId = $get('debt_id');
+                                    if (!$debtId) return;
+                                    $debt = \App\Models\Debt::find($debtId);
+                                    if ($debt && $debt->direction === 'payable') {
+                                        $service = app(\App\Services\SafeBalanceService::class);
+                                        $balance = $service->getBalance('digital', 'wallet');
+                                        if ($record) $balance += floatval($record->wallet_amount);
+                                        if ($amount > $balance) {
+                                            $fail('رصيد المحفظة غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                        }
+                                    }
+                                };
+                            }),
+
+                        Forms\Components\TextInput::make('fawry_amount')
+                            ->label('مبلغ فوري')
+                            ->numeric()
+                            ->default(0)
+                            ->prefix('ج.م')
+                            ->live(onBlur: true)
+                            ->visible(fn(Forms\Get $get) => $get('is_split'))
+                            ->rule(function (Forms\Get $get, ?DebtPayment $record) {
+                                return function (string $attribute, $value, \Closure $fail) use ($get, $record) {
+                                    $amount = floatval($value);
+                                    if ($amount <= 0) return;
+                                    
+                                    $debtId = $get('debt_id');
+                                    if (!$debtId) return;
+                                    $debt = \App\Models\Debt::find($debtId);
+                                    if ($debt && $debt->direction === 'payable') {
+                                        $service = app(\App\Services\SafeBalanceService::class);
+                                        $balance = $service->getBalance('digital', 'fawry');
+                                        if ($record) $balance += floatval($record->fawry_amount);
+                                        if ($amount > $balance) {
+                                            $fail('رصيد فوري غير كافٍ. المتاح: ' . number_format($balance, 2) . ' ج.م');
+                                        }
+                                    }
+                                };
+                            }),
 
                         Forms\Components\DatePicker::make('payment_date')
                             ->label('تاريخ الدفع')
@@ -122,21 +279,32 @@ class DebtPaymentResource extends Resource
                     ->date('Y-m-d')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('amount')
-                    ->label('المبلغ')
+                Tables\Columns\TextColumn::make('total_amount')
+                    ->label('الإجمالي')
                     ->money('EGP')
-                    ->sortable(),
-
-                Tables\Columns\TextColumn::make('source')
-                    ->label('المصدر')
+                    ->sortable(['cash_amount', 'instapay_amount', 'wallet_amount', 'fawry_amount'])
                     ->badge()
-                    ->formatStateUsing(function (string $state, $record) {
-                        if ($state === 'cash') return 'نقدي';
-                        $channelNames = ['instapay' => 'إنستاباي', 'wallet' => 'محفظة', 'fawry' => 'فوري'];
-                        $channel = $record->digital_channel;
-                        return 'شبكة' . ($channel ? ' (' . ($channelNames[$channel] ?? $channel) . ')' : '');
-                    })
-                    ->color(fn(string $state) => $state === 'cash' ? 'warning' : 'info'),
+                    ->color('danger'),
+
+                Tables\Columns\TextColumn::make('cash_amount')
+                    ->label('نقدي')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('instapay_amount')
+                    ->label('إنستاباي')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('wallet_amount')
+                    ->label('محفظة')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                Tables\Columns\TextColumn::make('fawry_amount')
+                    ->label('فوري')
+                    ->money('EGP')
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('installment.installment_number')
                     ->label('رقم القسط')
@@ -148,12 +316,7 @@ class DebtPaymentResource extends Resource
                     ->options(Debt::pluck('title', 'id'))
                     ->searchable(),
 
-                Tables\Filters\SelectFilter::make('source')
-                    ->label('المصدر')
-                    ->options([
-                        'cash' => 'نقدي',
-                        'digital' => 'شبكة',
-                    ]),
+
 
                 Tables\Filters\Filter::make('date_range')
                     ->form([
