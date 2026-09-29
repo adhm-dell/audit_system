@@ -231,7 +231,8 @@ class OwnerWithdrawalResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->defaultSort('withdrawal_date', 'desc')
+            ->defaultSort('id', 'desc')
+            ->modifyQueryUsing(fn ($query) => $query->reorder()->orderBy('withdrawal_date', 'desc')->orderBy('id', 'desc'))
             ->columns([
                 Tables\Columns\TextColumn::make('owner.name')
                     ->label('الشريك')

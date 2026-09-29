@@ -258,7 +258,8 @@ class DebtPaymentResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->defaultSort('payment_date', 'desc')
+            ->defaultSort('id', 'desc')
+            ->modifyQueryUsing(fn ($query) => $query->reorder()->orderBy('payment_date', 'desc')->orderBy('id', 'desc'))
             ->columns([
                 Tables\Columns\TextColumn::make('debt.title')
                     ->label('المديونية')

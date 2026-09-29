@@ -248,7 +248,8 @@ class ExpenseResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->defaultSort('expense_date', 'desc')
+            ->defaultSort('id', 'desc')
+            ->modifyQueryUsing(fn ($query) => $query->reorder()->orderBy('expense_date', 'desc')->orderBy('id', 'desc'))
             ->columns([
                 Tables\Columns\TextColumn::make('expense_date')
                     ->label('التاريخ')
