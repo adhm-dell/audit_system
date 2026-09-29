@@ -46,7 +46,6 @@ class ExpenseResource extends Resource
                         Forms\Components\Toggle::make('is_split')
                             ->label('تقسيم المبلغ (Split Payment)')
                             ->live()
-                            ->dehydrated(false)
                             ->afterStateHydrated(function (Forms\Components\Toggle $component, ?Expense $record) {
                                 if (!$record) return;
                                 $count = 0;
@@ -64,7 +63,6 @@ class ExpenseResource extends Resource
                             ->prefix('ج.م')
                             ->visible(fn(Forms\Get $get) => !$get('is_split'))
                             ->required(fn(Forms\Get $get) => !$get('is_split'))
-                            ->dehydrated(false)
                             ->afterStateHydrated(function ($component, ?Expense $record) {
                                 if (!$record) return;
                                 $component->state($record->total_amount);
@@ -106,7 +104,6 @@ class ExpenseResource extends Resource
                             ->default('cash')
                             ->visible(fn(Forms\Get $get) => !$get('is_split'))
                             ->required(fn(Forms\Get $get) => !$get('is_split'))
-                            ->dehydrated(false)
                             ->afterStateHydrated(function ($component, ?Expense $record) {
                                 if (!$record) return;
                                 if ($record->instapay_amount > 0) $component->state('instapay');

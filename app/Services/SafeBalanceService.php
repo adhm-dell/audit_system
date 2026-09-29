@@ -23,17 +23,15 @@ class SafeBalanceService
 
         $ownerDeposits = OwnerDeposit::sum('cash_amount');
 
-        $withdrawals = OwnerWithdrawal::where('source', 'cash')->sum('amount');
+        $withdrawals = OwnerWithdrawal::sum('cash_amount');
 
-        $expenses = Expense::where('source', 'cash')->sum('amount');
+        $expenses = Expense::sum('cash_amount');
 
-        $debtPaymentsOut = DebtPayment::where('source', 'cash')
-            ->whereHas('debt', fn($q) => $q->where('direction', 'payable'))
-            ->sum('amount');
+        $debtPaymentsOut = DebtPayment::whereHas('debt', fn($q) => $q->where('direction', 'payable'))
+            ->sum('cash_amount');
 
-        $debtPaymentsIn = DebtPayment::where('source', 'cash')
-            ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
-            ->sum('amount');
+        $debtPaymentsIn = DebtPayment::whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
+            ->sum('cash_amount');
 
         return $deposits + $barDeposits + $ownerDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
     }
@@ -52,23 +50,15 @@ class SafeBalanceService
             ->where('digital_channel', $channel)
             ->sum('expenses_total');
 
-        $withdrawals = OwnerWithdrawal::where('source', 'digital')
-            ->where('digital_channel', $channel)
-            ->sum('amount');
+        $withdrawals = OwnerWithdrawal::sum("{$channel}_amount");
 
-        $expenses = Expense::where('source', 'digital')
-            ->where('digital_channel', $channel)
-            ->sum('amount');
+        $expenses = Expense::sum("{$channel}_amount");
 
-        $debtPaymentsOut = DebtPayment::where('source', 'digital')
-            ->where('digital_channel', $channel)
-            ->whereHas('debt', fn($q) => $q->where('direction', 'payable'))
-            ->sum('amount');
+        $debtPaymentsOut = DebtPayment::whereHas('debt', fn($q) => $q->where('direction', 'payable'))
+            ->sum("{$channel}_amount");
 
-        $debtPaymentsIn = DebtPayment::where('source', 'digital')
-            ->where('digital_channel', $channel)
-            ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
-            ->sum('amount');
+        $debtPaymentsIn = DebtPayment::whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
+            ->sum("{$channel}_amount");
 
         return $deposits + $barDeposits + $ownerDeposits - $envelopeExpenses - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
     }
@@ -113,23 +103,25 @@ class SafeBalanceService
                 ->sum(DB::raw('instapay_amount + wallet_amount + fawry_amount'));
         }
 
-        $withdrawals = OwnerWithdrawal::where('source', $source)
-            ->where('withdrawal_date', '<=', $date)
-            ->sum('amount');
-
-        $expenses = Expense::where('source', $source)
-            ->where('expense_date', '<=', $date)
-            ->sum('amount');
-
-        $debtPaymentsOut = DebtPayment::where('source', $source)
-            ->where('payment_date', '<=', $date)
-            ->whereHas('debt', fn($q) => $q->where('direction', 'payable'))
-            ->sum('amount');
-
-        $debtPaymentsIn = DebtPayment::where('source', $source)
-            ->where('payment_date', '<=', $date)
-            ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
-            ->sum('amount');
+        if ($source === 'cash') {
+            $withdrawals = OwnerWithdrawal::where('withdrawal_date', '<=', $date)->sum('cash_amount');
+            $expenses = Expense::where('expense_date', '<=', $date)->sum('cash_amount');
+            $debtPaymentsOut = DebtPayment::where('payment_date', '<=', $date)
+                ->whereHas('debt', fn($q) => $q->where('direction', 'payable'))->sum('cash_amount');
+            $debtPaymentsIn = DebtPayment::where('payment_date', '<=', $date)
+                ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))->sum('cash_amount');
+        } else {
+            $withdrawals = OwnerWithdrawal::where('withdrawal_date', '<=', $date)
+                ->sum(DB::raw('instapay_amount + wallet_amount + fawry_amount'));
+            $expenses = Expense::where('expense_date', '<=', $date)
+                ->sum(DB::raw('instapay_amount + wallet_amount + fawry_amount'));
+            $debtPaymentsOut = DebtPayment::where('payment_date', '<=', $date)
+                ->whereHas('debt', fn($q) => $q->where('direction', 'payable'))
+                ->sum(DB::raw('instapay_amount + wallet_amount + fawry_amount'));
+            $debtPaymentsIn = DebtPayment::where('payment_date', '<=', $date)
+                ->whereHas('debt', fn($q) => $q->where('direction', 'receivable'))
+                ->sum(DB::raw('instapay_amount + wallet_amount + fawry_amount'));
+        }
 
         return $deposits + $barDeposits + $ownerDeposits - $withdrawals - $expenses - $debtPaymentsOut + $debtPaymentsIn;
     }

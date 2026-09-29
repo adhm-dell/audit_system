@@ -38,6 +38,8 @@ class EditExpense extends EditRecord
             elseif ($source === 'wallet') $data['wallet_amount'] = $amount;
             elseif ($source === 'fawry') $data['fawry_amount'] = $amount;
         }
+
+        unset($data['is_split'], $data['single_amount'], $data['single_source']);
         
         return $data;
     }

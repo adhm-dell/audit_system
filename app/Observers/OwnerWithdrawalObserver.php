@@ -20,20 +20,20 @@ class OwnerWithdrawalObserver
 
         $snapshot = $this->balanceService->getBalanceSnapshot();
 
-        if ($withdrawal->cash_amount > 0) {
-            $this->createTransaction($withdrawal, 'cash', null, $withdrawal->cash_amount, $snapshot);
+        if ((float) $withdrawal->cash_amount > 0) {
+            $this->createTransaction($withdrawal, 'cash', null, (float) $withdrawal->cash_amount, $snapshot);
         }
 
-        if ($withdrawal->instapay_amount > 0) {
-            $this->createTransaction($withdrawal, 'digital', 'instapay', $withdrawal->instapay_amount, $snapshot);
+        if ((float) $withdrawal->instapay_amount > 0) {
+            $this->createTransaction($withdrawal, 'digital', 'instapay', (float) $withdrawal->instapay_amount, $snapshot);
         }
 
-        if ($withdrawal->wallet_amount > 0) {
-            $this->createTransaction($withdrawal, 'digital', 'wallet', $withdrawal->wallet_amount, $snapshot);
+        if ((float) $withdrawal->wallet_amount > 0) {
+            $this->createTransaction($withdrawal, 'digital', 'wallet', (float) $withdrawal->wallet_amount, $snapshot);
         }
 
-        if ($withdrawal->fawry_amount > 0) {
-            $this->createTransaction($withdrawal, 'digital', 'fawry', $withdrawal->fawry_amount, $snapshot);
+        if ((float) $withdrawal->fawry_amount > 0) {
+            $this->createTransaction($withdrawal, 'digital', 'fawry', (float) $withdrawal->fawry_amount, $snapshot);
         }
     }
 

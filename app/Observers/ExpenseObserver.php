@@ -20,20 +20,20 @@ class ExpenseObserver
 
         $snapshot = $this->balanceService->getBalanceSnapshot();
 
-        if ($expense->cash_amount > 0) {
-            $this->createTransaction($expense, 'cash', null, $expense->cash_amount, $snapshot);
+        if ((float) $expense->cash_amount > 0) {
+            $this->createTransaction($expense, 'cash', null, (float) $expense->cash_amount, $snapshot);
         }
 
-        if ($expense->instapay_amount > 0) {
-            $this->createTransaction($expense, 'digital', 'instapay', $expense->instapay_amount, $snapshot);
+        if ((float) $expense->instapay_amount > 0) {
+            $this->createTransaction($expense, 'digital', 'instapay', (float) $expense->instapay_amount, $snapshot);
         }
 
-        if ($expense->wallet_amount > 0) {
-            $this->createTransaction($expense, 'digital', 'wallet', $expense->wallet_amount, $snapshot);
+        if ((float) $expense->wallet_amount > 0) {
+            $this->createTransaction($expense, 'digital', 'wallet', (float) $expense->wallet_amount, $snapshot);
         }
 
-        if ($expense->fawry_amount > 0) {
-            $this->createTransaction($expense, 'digital', 'fawry', $expense->fawry_amount, $snapshot);
+        if ((float) $expense->fawry_amount > 0) {
+            $this->createTransaction($expense, 'digital', 'fawry', (float) $expense->fawry_amount, $snapshot);
         }
     }
 

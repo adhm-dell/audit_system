@@ -25,20 +25,20 @@ class DebtPaymentObserver
 
         $snapshot = $this->balanceService->getBalanceSnapshot();
 
-        if ($payment->cash_amount > 0) {
-            $this->createTransaction($payment, 'cash', null, $payment->cash_amount, $direction, $snapshot);
+        if ((float) $payment->cash_amount > 0) {
+            $this->createTransaction($payment, 'cash', null, (float) $payment->cash_amount, $direction, $snapshot);
         }
 
-        if ($payment->instapay_amount > 0) {
-            $this->createTransaction($payment, 'digital', 'instapay', $payment->instapay_amount, $direction, $snapshot);
+        if ((float) $payment->instapay_amount > 0) {
+            $this->createTransaction($payment, 'digital', 'instapay', (float) $payment->instapay_amount, $direction, $snapshot);
         }
 
-        if ($payment->wallet_amount > 0) {
-            $this->createTransaction($payment, 'digital', 'wallet', $payment->wallet_amount, $direction, $snapshot);
+        if ((float) $payment->wallet_amount > 0) {
+            $this->createTransaction($payment, 'digital', 'wallet', (float) $payment->wallet_amount, $direction, $snapshot);
         }
 
-        if ($payment->fawry_amount > 0) {
-            $this->createTransaction($payment, 'digital', 'fawry', $payment->fawry_amount, $direction, $snapshot);
+        if ((float) $payment->fawry_amount > 0) {
+            $this->createTransaction($payment, 'digital', 'fawry', (float) $payment->fawry_amount, $direction, $snapshot);
         }
 
         if ($payment->installment_id) {

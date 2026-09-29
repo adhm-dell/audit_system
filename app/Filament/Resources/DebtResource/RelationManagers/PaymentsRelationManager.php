@@ -39,7 +39,6 @@ class PaymentsRelationManager extends RelationManager
                 Forms\Components\Toggle::make('is_split')
                     ->label('تقسيم المبلغ (Split Payment)')
                     ->live()
-                    ->dehydrated(false)
                     ->afterStateHydrated(function (Forms\Components\Toggle $component, ?\App\Models\DebtPayment $record) {
                         if (!$record) return;
                         $count = 0;
@@ -57,7 +56,6 @@ class PaymentsRelationManager extends RelationManager
                     ->prefix('ج.م')
                     ->visible(fn(Forms\Get $get) => !$get('is_split'))
                     ->required(fn(Forms\Get $get) => !$get('is_split'))
-                    ->dehydrated(false)
                     ->afterStateHydrated(function ($component, ?\App\Models\DebtPayment $record) {
                         if (!$record) return;
                         $component->state($record->total_amount);
@@ -104,7 +102,6 @@ class PaymentsRelationManager extends RelationManager
                     ->default('cash')
                     ->visible(fn(Forms\Get $get) => !$get('is_split'))
                     ->required(fn(Forms\Get $get) => !$get('is_split'))
-                    ->dehydrated(false)
                     ->afterStateHydrated(function ($component, ?\App\Models\DebtPayment $record) {
                         if (!$record) return;
                         if ($record->instapay_amount > 0) $component->state('instapay');
@@ -280,6 +277,7 @@ class PaymentsRelationManager extends RelationManager
                             elseif ($source === 'wallet') $data['wallet_amount'] = $amount;
                             elseif ($source === 'fawry') $data['fawry_amount'] = $amount;
                         }
+                        unset($data['is_split'], $data['single_amount'], $data['single_source']);
                         return $data;
                     }),
             ])
